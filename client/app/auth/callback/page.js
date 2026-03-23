@@ -1,5 +1,6 @@
 "use client";
 import { useEffect } from "react";
+import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 export default function AuthCallback() {
@@ -27,11 +28,14 @@ export default function AuthCallback() {
   }, [router, params]);
 
   return (
-    <div className="auth-page">
-      <div className="auth-card" style={{ textAlign: "center" }}>
-        <div className="spinner-lg" style={{ margin: "0 auto 20px" }} />
-        <p className="subtitle animate-pulse">Signing you in with Google...</p>
-      </div>
-    </div>
+    <Suspense fallback={
+      <div className="auth-page">
+        <div className="auth-card" style={{ textAlign: "center" }}>
+          <div className="spinner-lg" style={{ margin: "0 auto 20px" }} />
+          <p className="subtitle animate-pulse">Signing you in with Google...</p>
+        </div>
+      </div>}>
+      <CallbackHandler />
+    </Suspense>
   );
 }
