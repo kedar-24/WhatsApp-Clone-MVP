@@ -5,6 +5,7 @@ const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
+const passport = require("./config/passport");
 
 const connectDB = require("./config/db");
 const authRoutes = require("./routes/auth");
@@ -54,6 +55,7 @@ app.use(
   })
 );
 app.use(express.json({ limit: "1mb" }));
+app.use(passport.initialize());
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
 // Rate limiter for specific routes

@@ -22,8 +22,17 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: [true, "Password is required"],
+      required: false,
       minlength: [6, "Password must be at least 6 characters"],
+    },
+    googleId: {
+      type: String,
+      sparse: true,           // ✅ allows multiple null values
+      unique: true,
+    },
+    avatar: {
+      type: String,
+      default: "",
     },
     friends: [
       {

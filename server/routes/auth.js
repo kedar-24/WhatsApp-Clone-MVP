@@ -22,6 +22,7 @@ const sanitizeUser = (user) => ({
   email: user.email,
 });
 
+
 // ─────────────────────────────────────────────────────────────────────
 // POST /api/auth/signup
 // ─────────────────────────────────────────────────────────────────────
@@ -180,5 +181,28 @@ router.get("/me", authMiddleware, async (req, res) => {
     });
   }
 });
+// ─────────────────────────────────────────────────────────────────────
+// GET /api/auth/google  — redirect to Google
+// ─────────────────────────────────────────────────────────────────────
+router.get(
+  "/google",
+  passport.authenticate("google", { scope: ["profile", "email"], session: false })
+);
+
+// ─────────────────────────────────────────────────────────────────────
+// GET /api/auth/google/callback  — Google redirects here
+// ─────────────────────────────────────────────────────────────────────
+router.get(
+  "/google/callback",
+  passport.authenticate("google", { session: false, failureRedirect: "/login" }),
+  (req, res) => {
+    const token = generateToken(req.user);
+    const user = sanitizeUser(req.user);
+    // Send token + user to frontend via URL params
+    res.redirect(
+      `${process.env.CLIENT_ORIGIN}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}`
+    );
+  }
+);
 
 module.exports = router;
