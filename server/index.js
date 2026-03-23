@@ -32,8 +32,9 @@ const server = http.createServer(app);
 // ─── Socket.IO Setup ────────────────────────────────────────────────
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_ORIGIN || "http://localhost:3000",
-    methods: ["GET", "POST"],
+    origin: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true,
   },
   pingTimeout: 60000, // disconnect after 60s of no pong
 });
@@ -48,7 +49,7 @@ app.use(compression()); // Compress responses
 
 app.use(
   cors({
-    origin: process.env.CLIENT_ORIGIN || "http://localhost:3000",
+    origin: true,
     credentials: true,
   })
 );
