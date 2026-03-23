@@ -408,7 +408,7 @@ export default function DashboardPage() {
 
   return (
     <ProtectedRoute>
-      <div className="dashboard">
+      <div className={`dashboard ${selectedFriend ? "mobile-active-chat" : "mobile-active-sidebar"}`}>
         {/* ═══════════════ SIDEBAR ═══════════════ */}
         <aside className="sidebar" onClick={() => setShowChatMenu(false)}>
           {/* Header */}
@@ -604,6 +604,16 @@ export default function DashboardPage() {
             <>
               {/* Chat Header */}
               <div className="chat-header">
+                <button
+                  className="mobile-back-btn"
+                  onClick={() => setSelectedFriend(null)}
+                  title="Back to chats"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="19" y1="12" x2="5" y2="12"></line>
+                    <polyline points="12 19 5 12 12 5"></polyline>
+                  </svg>
+                </button>
                 <div
                   className={`avatar ${isUserOnline(getUserId(selectedFriend)) ? "online" : ""}`}
                 >
