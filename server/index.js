@@ -16,9 +16,11 @@ const { initializeSocket } = require("./socket/socketHandler");
 const helmet = require("helmet");
 const compression = require("compression");
 const rateLimit = require("express-rate-limit");
+const morgan = require("morgan");
+const session = require("express-session");
 
 // ─── Validate Required Env Variables ────────────────────────────────
-const requiredEnv = ["MONGO_URI", "JWT_SECRET"];
+const requiredEnv = ["MONGO_URI", "JWT_SECRET", "SESSION_SECRET"];
 const missingEnv = requiredEnv.filter((key) => !process.env[key]);
 if (missingEnv.length > 0) {
   console.error(`❌ Missing required environment variables: ${missingEnv.join(", ")}`);
@@ -43,10 +45,24 @@ const io = new Server(server, {
 // ─── Middleware ──────────────────────────────────────────────────────
 app.set("trust proxy", 1); // Trust first proxy if running behind load balancer
 
+app.use(morgan("dev")); // Log requests
+
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" }
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: false // Allow dynamic scripts for Auth
 })); // Secure HTTP headers with cross-origin allowed
+
 app.use(compression()); // Compress responses
+
+// Session config (needed for some passport-oauth plugins even if session:false is used)
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "fallback_secret_not_for_prod",
+    resave: false,
+    saveUninitialized: false,
+    cookie: { secure: process.env.NODE_ENV === "production" }
+  })
+);
 
 app.use(
   cors({
