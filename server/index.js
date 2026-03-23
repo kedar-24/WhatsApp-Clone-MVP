@@ -41,7 +41,9 @@ const io = new Server(server, {
 // ─── Middleware ──────────────────────────────────────────────────────
 app.set("trust proxy", 1); // Trust first proxy if running behind load balancer
 
-app.use(helmet()); // Secure HTTP headers
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+})); // Secure HTTP headers with cross-origin allowed
 app.use(compression()); // Compress responses
 
 app.use(
