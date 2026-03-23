@@ -11,6 +11,7 @@ const SocketContext = createContext(null);
 export function SocketProvider({ children }) {
   const { user } = useAuth();
   const socketRef = useRef(null);
+  const [socket, setSocket] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState([]);
 
@@ -18,42 +19,44 @@ export function SocketProvider({ children }) {
     if (!user?.id) return;
 
     // Create the socket connection
-    const socket = io(SOCKET_URL, {
+    const socketInstance = io(SOCKET_URL, {
       transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionAttempts: 10,
       reconnectionDelay: 1000,
     });
 
-    socketRef.current = socket;
+    socketRef.current = socketInstance;
+    setSocket(socketInstance);
 
-    socket.on("connect", () => {
-      console.log("🔌 Socket connected:", socket.id);
+    socketInstance.on("connect", () => {
+      console.log("🔌 Socket connected:", socketInstance.id);
       setIsConnected(true);
 
       // Join your personal room
-      socket.emit("join", user.id);
+      socketInstance.emit("join", user.id);
     });
 
-    socket.on("disconnect", () => {
+    socketInstance.on("disconnect", () => {
       console.log("🔌 Socket disconnected");
       setIsConnected(false);
     });
 
-    socket.on("connect_error", (err) => {
+    socketInstance.on("connect_error", (err) => {
       console.error("Socket connection error:", err.message);
       setIsConnected(false);
     });
 
     // Listen for online users broadcast
-    socket.on("online_users", (users) => {
+    socketInstance.on("online_users", (users) => {
       setOnlineUsers(users);
     });
 
     // Cleanup on unmount or user change
     return () => {
-      socket.disconnect();
+      socketInstance.disconnect();
       socketRef.current = null;
+      setSocket(null);
       setIsConnected(false);
     };
   }, [user?.id]);
@@ -107,7 +110,7 @@ export function SocketProvider({ children }) {
   return (
     <SocketContext.Provider
       value={{
-        socket: socketRef.current,
+        socket,
         isConnected,
         onlineUsers,
         isUserOnline,

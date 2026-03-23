@@ -1,219 +1,124 @@
 const express = require("express");
-const mongoose = require("mongoose");
 const User = require("../models/User");
 const authMiddleware = require("../middleware/auth");
+const asyncHandler = require("../middleware/asyncHandler");
+const { isValidObjectId } = require("../utils/validation");
+const { sendSuccess, sendError } = require("../utils/response");
 
 const router = express.Router();
 
-const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
+// ─────────────────────────────────────────────────────────────────────
+// GET /api/users — All users except me (for "Add Friend" list)
+// ─────────────────────────────────────────────────────────────────────
+router.get("/", authMiddleware, asyncHandler(async (req, res) => {
+  const users = await User.find({ _id: { $ne: req.user.id } })
+    .select("-password")
+    .sort({ name: 1 })
+    .lean();
+
+  return sendSuccess(res, { users });
+}));
 
 // ─────────────────────────────────────────────────────────────────────
-// GET /api/users
-// Returns all users except the logged-in user (for "Add Friend" list)
+// GET /api/users/friends — My friends list
 // ─────────────────────────────────────────────────────────────────────
-router.get("/", authMiddleware, async (req, res) => {
-  try {
-    const users = await User.find({ _id: { $ne: req.user.id } })
-      .select("-password")
-      .sort({ name: 1 })
-      .lean();
+router.get("/friends", authMiddleware, asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user.id)
+    .populate("friends", "-password")
+    .lean();
 
-    return res.status(200).json({ success: true, users });
-  } catch (error) {
-    console.error("Fetch users error:", error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error.",
-    });
-  }
-});
+  if (!user) return sendError(res, "User not found.", 404);
+
+  return sendSuccess(res, { friends: user.friends || [] });
+}));
 
 // ─────────────────────────────────────────────────────────────────────
-// GET /api/users/friends
-// Returns the logged-in user's friends list
+// POST /api/users/friends/:friendId — Send a friend request
 // ─────────────────────────────────────────────────────────────────────
-router.get("/friends", authMiddleware, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id)
-      .populate("friends", "-password")
-      .lean();
+router.post("/friends/:friendId", authMiddleware, asyncHandler(async (req, res) => {
+  const { friendId } = req.params;
+  const userId = req.user.id;
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found.",
-      });
-    }
+  if (!isValidObjectId(friendId)) return sendError(res, "Invalid friend ID.", 400);
+  if (userId === friendId) return sendError(res, "Cannot add yourself as a friend.", 400);
 
-    return res.status(200).json({ success: true, friends: user.friends || [] });
-  } catch (error) {
-    console.error("Fetch friends error:", error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error.",
-    });
-  }
-});
+  const friend = await User.findById(friendId);
+  if (!friend) return sendError(res, "User not found.", 404);
+
+  await User.findByIdAndUpdate(friendId, {
+    $addToSet: { friendRequests: userId },
+  });
+
+  return sendSuccess(res, { message: `Friend request sent to ${friend.name}.` });
+}));
 
 // ─────────────────────────────────────────────────────────────────────
-// POST /api/users/friends/:friendId
-// Send a friend request to a user
+// DELETE /api/users/friends/:friendId — Remove friend (mutual)
 // ─────────────────────────────────────────────────────────────────────
-router.post("/friends/:friendId", authMiddleware, async (req, res) => {
-  try {
-    const { friendId } = req.params;
-    const userId = req.user.id;
+router.delete("/friends/:friendId", authMiddleware, asyncHandler(async (req, res) => {
+  const { friendId } = req.params;
+  const userId = req.user.id;
 
-    if (!isValidObjectId(friendId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid friend ID.",
-      });
-    }
+  if (!isValidObjectId(friendId)) return sendError(res, "Invalid friend ID.", 400);
 
-    if (userId === friendId) {
-      return res.status(400).json({
-        success: false,
-        message: "Cannot add yourself as a friend.",
-      });
-    }
+  // Mutual removal using Promise.all for performance
+  await Promise.all([
+    User.findByIdAndUpdate(userId, { $pull: { friends: friendId } }),
+    User.findByIdAndUpdate(friendId, { $pull: { friends: userId } }),
+  ]);
 
-    const friend = await User.findById(friendId);
-    if (!friend) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found.",
-      });
-    }
-
-    // Add current user to target user's friendRequests
-    await User.findByIdAndUpdate(friendId, {
-      $addToSet: { friendRequests: userId },
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: `Friend request sent to ${friend.name}.`,
-    });
-  } catch (error) {
-    console.error("Add friend error:", error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error.",
-    });
-  }
-});
+  return sendSuccess(res, { message: "Friend removed successfully." });
+}));
 
 // ─────────────────────────────────────────────────────────────────────
-// DELETE /api/users/friends/:friendId
-// Remove a user from the logged-in user's friends list (mutual)
+// GET /api/users/friend-requests — Incoming friend requests
 // ─────────────────────────────────────────────────────────────────────
-router.delete("/friends/:friendId", authMiddleware, async (req, res) => {
-  try {
-    const { friendId } = req.params;
-    const userId = req.user.id;
+router.get("/friend-requests", authMiddleware, asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user.id)
+    .populate("friendRequests", "-password")
+    .lean();
 
-    if (!isValidObjectId(friendId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid friend ID.",
-      });
-    }
+  if (!user) return sendError(res, "User not found.", 404);
 
-    // Remove friend from both users (mutual friendship) using $pull
-    await User.findByIdAndUpdate(userId, {
-      $pull: { friends: friendId },
-    });
-    await User.findByIdAndUpdate(friendId, {
-      $pull: { friends: userId },
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "Friend removed successfully.",
-    });
-  } catch (error) {
-    console.error("Remove friend error:", error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error.",
-    });
-  }
-});
-
-// ─────────────────────────────────────────────────────────────────────
-// GET /api/users/friend-requests
-// Returns the logged-in user's incoming friend requests
-// ─────────────────────────────────────────────────────────────────────
-router.get("/friend-requests", authMiddleware, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id)
-      .populate("friendRequests", "-password")
-      .lean();
-
-    if (!user) {
-      return res.status(404).json({ success: false, message: "User not found." });
-    }
-
-    return res.status(200).json({ success: true, requests: user.friendRequests || [] });
-  } catch (error) {
-    console.error("Fetch friend requests error:", error.message);
-    return res.status(500).json({ success: false, message: "Internal server error." });
-  }
-});
+  return sendSuccess(res, { requests: user.friendRequests || [] });
+}));
 
 // ─────────────────────────────────────────────────────────────────────
 // POST /api/users/friend-requests/:userId/accept
-// Accept a friend request
 // ─────────────────────────────────────────────────────────────────────
-router.post("/friend-requests/:userId/accept", authMiddleware, async (req, res) => {
-  try {
-    const currentUserId = req.user.id;
-    const { userId: senderId } = req.params;
+router.post("/friend-requests/:userId/accept", authMiddleware, asyncHandler(async (req, res) => {
+  const currentUserId = req.user.id;
+  const { userId: senderId } = req.params;
 
-    if (!isValidObjectId(senderId)) {
-      return res.status(400).json({ success: false, message: "Invalid user ID." });
-    }
+  if (!isValidObjectId(senderId)) return sendError(res, "Invalid user ID.", 400);
 
-    // Add to friends lists and remove from requests
-    await User.findByIdAndUpdate(currentUserId, {
+  await Promise.all([
+    User.findByIdAndUpdate(currentUserId, {
       $addToSet: { friends: senderId },
       $pull: { friendRequests: senderId },
-    });
-    await User.findByIdAndUpdate(senderId, {
+    }),
+    User.findByIdAndUpdate(senderId, {
       $addToSet: { friends: currentUserId },
-    });
+    }),
+  ]);
 
-    return res.status(200).json({ success: true, message: "Friend request accepted." });
-  } catch (error) {
-    console.error("Accept friend request error:", error.message);
-    return res.status(500).json({ success: false, message: "Internal server error." });
-  }
-});
+  return sendSuccess(res, { message: "Friend request accepted." });
+}));
 
 // ─────────────────────────────────────────────────────────────────────
 // POST /api/users/friend-requests/:userId/reject
-// Reject a friend request
 // ─────────────────────────────────────────────────────────────────────
-router.post("/friend-requests/:userId/reject", authMiddleware, async (req, res) => {
-  try {
-    const currentUserId = req.user.id;
-    const { userId: senderId } = req.params;
+router.post("/friend-requests/:userId/reject", authMiddleware, asyncHandler(async (req, res) => {
+  const currentUserId = req.user.id;
+  const { userId: senderId } = req.params;
 
-    if (!isValidObjectId(senderId)) {
-      return res.status(400).json({ success: false, message: "Invalid user ID." });
-    }
+  if (!isValidObjectId(senderId)) return sendError(res, "Invalid user ID.", 400);
 
-    // Remove from requests
-    await User.findByIdAndUpdate(currentUserId, {
-      $pull: { friendRequests: senderId },
-    });
+  await User.findByIdAndUpdate(currentUserId, {
+    $pull: { friendRequests: senderId },
+  });
 
-    return res.status(200).json({ success: true, message: "Friend request rejected." });
-  } catch (error) {
-    console.error("Reject friend request error:", error.message);
-    return res.status(500).json({ success: false, message: "Internal server error." });
-  }
-});
+  return sendSuccess(res, { message: "Friend request rejected." });
+}));
 
 module.exports = router;

@@ -1,17 +1,11 @@
-const mongoose = require("mongoose");
 const Message = require("../models/Message");
+const { isValidObjectId: isValidId } = require("../utils/validation");
 
 /**
  * Maps userId → socket.id for online-user tracking.
  * Using a Map for O(1) lookups.
  */
 const onlineUsers = new Map();
-
-/**
- * Validates a string is a valid MongoDB ObjectId.
- */
-const isValidId = (id) =>
-  typeof id === "string" && mongoose.Types.ObjectId.isValid(id);
 
 /**
  * Initialises all Socket.IO event handlers.
