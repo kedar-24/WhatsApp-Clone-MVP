@@ -12,6 +12,10 @@ const messageRoutes = require("./routes/messages");
 const userRoutes = require("./routes/users");
 const { initializeSocket } = require("./socket/socketHandler");
 
+const helmet = require("helmet");
+const compression = require("compression");
+const rateLimit = require("express-rate-limit");
+
 // ─── Validate Required Env Variables ────────────────────────────────
 const requiredEnv = ["MONGO_URI", "JWT_SECRET"];
 const missingEnv = requiredEnv.filter((key) => !process.env[key]);
@@ -35,6 +39,11 @@ const io = new Server(server, {
 });
 
 // ─── Middleware ──────────────────────────────────────────────────────
+app.set("trust proxy", 1); // Trust first proxy if running behind load balancer
+
+app.use(helmet()); // Secure HTTP headers
+app.use(compression()); // Compress responses
+
 app.use(
   cors({
     origin: process.env.CLIENT_ORIGIN || "http://localhost:3000",
@@ -43,6 +52,17 @@ app.use(
 );
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+
+// Rate limiter for specific routes
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 1000, // limit each IP to 1000 requests per 15 minutes
+  message: { success: false, message: "Too many requests, please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use("/api", apiLimiter);
 
 // ─── API Routes ─────────────────────────────────────────────────────
 app.use("/api/auth", authRoutes);

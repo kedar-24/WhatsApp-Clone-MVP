@@ -5,6 +5,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import api from "@/lib/api";
+import EmojiPicker, { Theme } from "emoji-picker-react";
 
 export default function DashboardPage() {
   const { user, logout } = useAuth();
@@ -23,6 +24,7 @@ export default function DashboardPage() {
   // ── State ──
   const [friends, setFriends] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
+  const [conversations, setConversations] = useState({});
   const [selectedFriend, setSelectedFriend] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
@@ -32,6 +34,13 @@ export default function DashboardPage() {
   const [addingFriend, setAddingFriend] = useState(null);
   const [typingUsers, setTypingUsers] = useState(new Set());
   const [toasts, setToasts] = useState([]);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showChatMenu, setShowChatMenu] = useState(false);
+
+  // Friend Requests State
+  const [friendRequests, setFriendRequests] = useState([]);
+  const [sentRequests, setSentRequests] = useState(new Set());
+  const [activeTab, setActiveTab] = useState("add");
 
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -61,13 +70,29 @@ export default function DashboardPage() {
     }, 50);
   }, []);
 
-  // ── Fetch friends list ──
+  // ── Fetch friends list & conversations ──
   const fetchFriends = useCallback(async () => {
     try {
-      const res = await api.get("/users/friends");
-      setFriends(res.data.friends || []);
+      const [friendsRes, convRes, reqRes] = await Promise.all([
+        api.get("/users/friends"),
+        api.get("/messages/conversations/all"),
+        api.get("/users/friend-requests"),
+      ]);
+      setFriends(friendsRes.data.friends || []);
+      setFriendRequests(reqRes.data.requests || []);
+      
+      const convs = {};
+      if (convRes.data.conversations) {
+        convRes.data.conversations.forEach(c => {
+          convs[c._id.toString()] = {
+            unreadCount: c.unreadCount,
+            latestMessage: c.latestMessage
+          };
+        });
+      }
+      setConversations(convs);
     } catch (err) {
-      console.error("Failed to fetch friends:", err);
+      console.error("Failed to fetch friends or conversations:", err);
     }
   }, []);
 
@@ -117,6 +142,15 @@ export default function DashboardPage() {
       })
     );
 
+    // Clear unread count for this friend locally
+    setConversations(prev => {
+      const current = prev[fId];
+      if (current && current.unreadCount > 0) {
+        return { ...prev, [fId]: { ...current, unreadCount: 0 }};
+      }
+      return prev;
+    });
+
     fetchMessages(fId);
   };
 
@@ -127,13 +161,59 @@ export default function DashboardPage() {
     if (!text || !selectedFriend) return;
 
     const friendId = getUserId(selectedFriend);
-    sendMessage(user.id, friendId, text);
+    sendMessage(user?.id, friendId, text);
 
     // Clear typing
-    emitStopTyping(user.id, friendId);
+    emitStopTyping(user?.id, friendId);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
 
     setNewMessage("");
+    setShowEmojiPicker(false);
+  };
+
+  // ── Emoji Click handler ──
+  const onEmojiClick = (emojiObject) => {
+    setNewMessage((prev) => prev + emojiObject.emoji);
+  };
+
+  // ── Clear Chat ──
+  const handleClearChat = async () => {
+    if (!selectedFriend) return;
+    try {
+      const friendId = getUserId(selectedFriend);
+      await api.delete(`/messages/${friendId}`);
+      setMessages([]);
+      setConversations((prev) => {
+        const next = { ...prev };
+        delete next[friendId];
+        return next;
+      });
+      setShowChatMenu(false);
+    } catch (err) {
+      console.error("Failed to clear chat:", err);
+    }
+  };
+
+  // ── Remove Friend ──
+  const handleRemoveFriend = async () => {
+    if (!selectedFriend) return;
+    try {
+      const friendId = getUserId(selectedFriend);
+      await api.delete(`/users/friends/${friendId}`);
+      // Clear chat automatically on remove
+      await api.delete(`/messages/${friendId}`);
+      setSelectedFriend(null);
+      setMessages([]);
+      setConversations((prev) => {
+        const next = { ...prev };
+        delete next[friendId];
+        return next;
+      });
+      fetchFriends();
+      setShowChatMenu(false);
+    } catch (err) {
+      console.error("Failed to remove friend:", err);
+    }
   };
 
   // ── Typing handler ──
@@ -143,25 +223,46 @@ export default function DashboardPage() {
     if (!selectedFriend) return;
     const friendId = getUserId(selectedFriend);
 
-    emitTyping(user.id, friendId);
+    emitTyping(user?.id, friendId);
 
     // Auto stop after 2s of no typing
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
-      emitStopTyping(user.id, friendId);
+      emitStopTyping(user?.id, friendId);
     }, 2000);
   };
 
-  // ── Add friend ──
+  // ── Add friend request ──
   const handleAddFriend = async (friendId) => {
     setAddingFriend(friendId);
     try {
       await api.post(`/users/friends/${friendId}`);
-      await fetchFriends();
+      setSentRequests(prev => new Set(prev).add(friendId?.toString()));
     } catch (err) {
       console.error("Failed to add friend:", err);
     } finally {
       setAddingFriend(null);
+    }
+  };
+
+  // ── Accept Request ──
+  const handleAcceptRequest = async (requestId) => {
+    try {
+      await api.post(`/users/friend-requests/${requestId}/accept`);
+      setFriendRequests((prev) => prev.filter((r) => r._id !== requestId));
+      fetchFriends(); // Refresh friends list
+    } catch (err) {
+      console.error("Failed to accept request:", err);
+    }
+  };
+
+  // ── Reject Request ──
+  const handleRejectRequest = async (requestId) => {
+    try {
+      await api.post(`/users/friend-requests/${requestId}/reject`);
+      setFriendRequests((prev) => prev.filter((r) => r._id !== requestId));
+    } catch (err) {
+      console.error("Failed to reject request:", err);
     }
   };
 
@@ -178,7 +279,7 @@ export default function DashboardPage() {
     const handleReceiveMessage = (msg) => {
       const senderId = msg.senderId?.toString();
       const receiverId = msg.receiverId?.toString();
-      const currentUserId = user.id?.toString();
+      const currentUserId = user?.id?.toString();
       // Ensure status is handled
       const selectedId = selectedFriend
         ? getUserId(selectedFriend)?.toString()
@@ -195,9 +296,24 @@ export default function DashboardPage() {
         markSeen(msg._id, senderId);
         setMessages((prev) => [...prev, msg]);
         scrollToBottom();
+        
+        // Update conversation summary
+        setConversations(prev => ({
+          ...prev,
+          [senderId]: { unreadCount: 0, latestMessage: msg }
+        }));
       } else {
         // Not in current chat: mark delivered, show toast
         markDelivered(msg._id, senderId);
+        
+        // Update conversation summary with unread count
+        setConversations(prev => {
+          const prevConv = prev[senderId] || { unreadCount: 0 };
+          return {
+            ...prev,
+            [senderId]: { unreadCount: prevConv.unreadCount + 1, latestMessage: msg }
+          };
+        });
         
         // Find sender name from friends/users
         const sender = allUsers.find(u => getUserId(u)?.toString() === senderId) 
@@ -226,6 +342,17 @@ export default function DashboardPage() {
     const handleMessageSent = (msg) => {
       setMessages((prev) => [...prev, msg]);
       scrollToBottom();
+      
+      const fId = msg.receiverId?.toString();
+      if (fId) {
+        setConversations(prev => {
+          const prevConv = prev[fId] || { unreadCount: 0 };
+          return {
+            ...prev,
+            [fId]: { ...prevConv, latestMessage: msg }
+          };
+        });
+      }
     };
 
     // Status updates for ticks
@@ -283,7 +410,7 @@ export default function DashboardPage() {
     <ProtectedRoute>
       <div className="dashboard">
         {/* ═══════════════ SIDEBAR ═══════════════ */}
-        <aside className="sidebar">
+        <aside className="sidebar" onClick={() => setShowChatMenu(false)}>
           {/* Header */}
           <div className="sidebar-header">
             <h2>
@@ -294,10 +421,13 @@ export default function DashboardPage() {
               className="add-friend-btn"
               onClick={() => {
                 setShowAddFriendModal(true);
+                setActiveTab("add");
                 fetchAllUsers();
+                fetchFriends();
               }}
               title="Add Friend"
               id="add-friend-btn"
+              style={{ position: 'relative' }}
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -313,6 +443,7 @@ export default function DashboardPage() {
                 <line x1="19" y1="8" x2="19" y2="14" />
                 <line x1="22" y1="11" x2="16" y2="11" />
               </svg>
+              {friendRequests.length > 0 && <span className="notification-dot" style={{ position: 'absolute', top: '-2px', right: '-2px', width: '10px', height: '10px', background: 'var(--accent)', borderRadius: '50%'}}></span>}
             </button>
           </div>
 
@@ -407,6 +538,14 @@ export default function DashboardPage() {
                   const isSelected =
                     selectedFriend && getUserId(selectedFriend) === fId;
 
+                  const conv = conversations[fId];
+                  const unreadCount = conv?.unreadCount || 0;
+                  const latestMsg = conv?.latestMessage;
+                  const msgText = latestMsg 
+                    ? (latestMsg.senderId?.toString() === user?.id?.toString() ? "You: " : "") + latestMsg.text 
+                    : "";
+                  const msgTime = latestMsg ? formatTime(latestMsg.timestamp || latestMsg.createdAt) : "";
+
                   return (
                     <div
                       key={fId}
@@ -417,9 +556,17 @@ export default function DashboardPage() {
                         {getInitials(friend.name)}
                       </div>
                       <div className="friend-info">
-                        <div className="friend-name">{friend.name}</div>
-                        <div className="friend-status">
-                          {online ? "Online" : "Offline"}
+                        <div className="friend-name-row">
+                          <div className="friend-name" title={friend.name}>{friend.name}</div>
+                          <div className="friend-time">{msgTime || (online && "Online")}</div>
+                        </div>
+                        <div className="friend-bottom-row">
+                          <div className={`latest-message ${unreadCount > 0 ? "unread" : ""}`}>
+                            {msgText || (online ? "Online" : "Offline")}
+                          </div>
+                          {unreadCount > 0 && (
+                            <div className="unread-badge">{unreadCount}</div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -472,6 +619,30 @@ export default function DashboardPage() {
                       : "Offline"}
                   </div>
                 </div>
+                
+                <div className="chat-header-actions" style={{ position: "relative" }}>
+                  <button 
+                    className="chat-menu-btn" 
+                    onClick={() => setShowChatMenu(!showChatMenu)}
+                    title="Menu"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="1"></circle>
+                      <circle cx="12" cy="5" r="1"></circle>
+                      <circle cx="12" cy="19" r="1"></circle>
+                    </svg>
+                  </button>
+                  {showChatMenu && (
+                    <div className="chat-menu-dropdown animate-fade-in">
+                      <button onClick={handleClearChat} className="menu-danger-btn">
+                        Clear Chat
+                      </button>
+                      <button onClick={handleRemoveFriend} className="menu-danger-btn">
+                        Remove Friend
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Messages */}
@@ -496,7 +667,7 @@ export default function DashboardPage() {
                   {messages.map((msg, index) => {
                     const isSent =
                       (msg.senderId?._id || msg.senderId)?.toString() ===
-                      user.id?.toString();
+                      user?.id?.toString();
 
                     return (
                       <div
@@ -544,15 +715,47 @@ export default function DashboardPage() {
               )}
 
               {/* Message Input */}
-              <form className="message-input-bar" onSubmit={handleSendMessage}>
-                <input
-                  type="text"
-                  placeholder="Type a message..."
-                  value={newMessage}
-                  onChange={handleTyping}
-                  id="message-input"
-                  autoComplete="off"
-                />
+              <div className="message-input-wrapper">
+                {showEmojiPicker && (
+                  <div className="emoji-picker-container" onClick={(e) => e.stopPropagation()}>
+                    <EmojiPicker
+                      onEmojiClick={onEmojiClick}
+                      theme={Theme.DARK}
+                      autoFocusSearch={false}
+                    />
+                  </div>
+                )}
+                <form className="message-input-bar" onSubmit={handleSendMessage}>
+                  <button
+                    type="button"
+                    className="emoji-btn"
+                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                    title="Emojis"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+                      <line x1="9" y1="9" x2="9.01" y2="9"></line>
+                      <line x1="15" y1="9" x2="15.01" y2="9"></line>
+                    </svg>
+                  </button>
+                  <input
+                    type="text"
+                    placeholder="Type a message..."
+                    value={newMessage}
+                    onChange={handleTyping}
+                    id="message-input"
+                    autoComplete="off"
+                    onClick={() => setShowEmojiPicker(false)}
+                  />
                 <button
                   type="submit"
                   className="send-btn"
@@ -573,6 +776,7 @@ export default function DashboardPage() {
                   </svg>
                 </button>
               </form>
+            </div>
             </>
           )}
         </main>
@@ -588,7 +792,7 @@ export default function DashboardPage() {
         >
           <div className="modal-card">
             <div className="modal-header">
-              <h3>Add Friends</h3>
+              <h3>{activeTab === "add" ? "Find Friends" : "Friend Requests"}</h3>
               <button
                 className="close-btn"
                 onClick={() => setShowAddFriendModal(false)}
@@ -596,43 +800,93 @@ export default function DashboardPage() {
                 ✕
               </button>
             </div>
-            <div className="modal-body">
-              {allUsers.length === 0 ? (
-                <div
-                  className="empty-state"
-                  style={{ padding: "30px", textAlign: "center" }}
-                >
-                  <p style={{ color: "var(--text-muted)", fontSize: "14px" }}>
-                    No other users found. Share the app link so others can sign
-                    up!
-                  </p>
-                </div>
-              ) : (
-                allUsers.map((u) => {
-                  const uId = getUserId(u);
-                  const isFriend = friendIds.includes(uId?.toString());
+            
+            <div className="modal-tabs" style={{ display: "flex", borderBottom: "1px solid var(--border)", marginBottom: "8px" }}>
+              <button 
+                onClick={() => setActiveTab("add")} 
+                style={{ flex: 1, padding: "12px", background: "transparent", border: "none", color: activeTab === "add" ? "var(--accent)" : "var(--text-muted)", cursor: "pointer", borderBottom: activeTab === "add" ? "2px solid var(--accent)" : "none", fontWeight: 500 }}>
+                Find Friends
+              </button>
+              <button 
+                onClick={() => setActiveTab("requests")} 
+                style={{ flex: 1, padding: "12px", background: "transparent", border: "none", color: activeTab === "requests" ? "var(--accent)" : "var(--text-muted)", cursor: "pointer", borderBottom: activeTab === "requests" ? "2px solid var(--accent)" : "none", position: "relative", fontWeight: 500 }}>
+                Requests
+                {friendRequests.length > 0 && <span className="unread-badge" style={{ position: "absolute", top: "4px", right: "20%" }}>{friendRequests.length}</span>}
+              </button>
+            </div>
 
-                  return (
-                    <div key={uId} className="user-item">
-                      <div className="avatar">{getInitials(u.name)}</div>
-                      <div className="user-detail">
-                        <div className="name">{u.name}</div>
-                        <div className="email">{u.email}</div>
+            <div className="modal-body" style={{ minHeight: "300px" }}>
+              {activeTab === "add" ? (
+                allUsers.length === 0 ? (
+                  <div
+                    className="empty-state"
+                    style={{ padding: "30px", textAlign: "center" }}
+                  >
+                    <p style={{ color: "var(--text-muted)", fontSize: "14px" }}>
+                      No other users found. Share the app link so others can sign
+                      up!
+                    </p>
+                  </div>
+                ) : (
+                  allUsers.map((u) => {
+                    const uId = getUserId(u);
+                    const isFriend = friendIds.includes(uId?.toString());
+                    const hasSent = sentRequests.has(uId?.toString());
+
+                    return (
+                      <div key={uId} className="user-item">
+                        <div className="avatar">{getInitials(u.name)}</div>
+                        <div className="user-detail">
+                          <div className="name">{u.name}</div>
+                          <div className="email">{u.email}</div>
+                        </div>
+                        {isFriend ? (
+                          <span className="added-badge">✓ Friend</span>
+                        ) : hasSent ? (
+                          <span className="added-badge">✓ Sent</span>
+                        ) : (
+                          <button
+                            className="add-btn"
+                            onClick={() => handleAddFriend(uId)}
+                            disabled={addingFriend === uId}
+                          >
+                            {addingFriend === uId ? "Sending..." : "Request"}
+                          </button>
+                        )}
                       </div>
-                      {isFriend ? (
-                        <span className="added-badge">✓ Friend</span>
-                      ) : (
-                        <button
-                          className="add-btn"
-                          onClick={() => handleAddFriend(uId)}
-                          disabled={addingFriend === uId}
-                        >
-                          {addingFriend === uId ? "Adding..." : "+ Add"}
+                    );
+                  })
+                )
+              ) : (
+                friendRequests.length === 0 ? (
+                  <div className="empty-state" style={{ padding: "30px", textAlign: "center", color: "var(--text-muted)" }}>
+                    <p>No pending friend requests.</p>
+                  </div>
+                ) : (
+                  friendRequests.map(r => (
+                    <div key={r._id} className="user-item">
+                      <div className="avatar">{getInitials(r.name)}</div>
+                      <div className="user-detail">
+                        <div className="name">{r.name}</div>
+                        <div className="email">{r.email}</div>
+                      </div>
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <button 
+                          className="add-btn" 
+                          onClick={() => handleAcceptRequest(r._id)} 
+                          style={{ padding: "6px 12px" }}>
+                          Accept
                         </button>
-                      )}
+                        <button 
+                          className="close-btn" 
+                          onClick={() => handleRejectRequest(r._id)} 
+                          style={{ padding: "6px 12px", background: "var(--bg-hover)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)" }}>
+                          Reject
+                        </button>
+                      </div>
                     </div>
-                  );
-                })
+                  ))
+                )
               )}
             </div>
           </div>

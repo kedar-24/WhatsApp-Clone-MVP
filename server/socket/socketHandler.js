@@ -24,7 +24,7 @@ const initializeSocket = (io) => {
     // ── JOIN ──────────────────────────────────────────────────────
     // Client sends their userId after connecting.
     // We map it to the socket and join a private room.
-    socket.on("join", (userId) => {
+    socket.on("join", async (userId) => {
       if (!isValidId(userId)) {
         return socket.emit("error_message", {
           message: "Invalid userId.",
@@ -41,6 +41,23 @@ const initializeSocket = (io) => {
 
       // Broadcast updated online-user list to all clients
       io.emit("online_users", Array.from(onlineUsers.keys()));
+
+      // ── AUTO-DELIVER PENDING MESSAGES ──
+      try {
+        const pendingMessages = await Message.find({ receiverId: userId, status: "sent" });
+        if (pendingMessages.length > 0) {
+          await Message.updateMany({ receiverId: userId, status: "sent" }, { status: "delivered" });
+          // Notify the senders
+          pendingMessages.forEach(msg => {
+            io.to(msg.senderId.toString()).emit("message_status_update", { 
+              messageId: msg._id, 
+              status: "delivered" 
+            });
+          });
+        }
+      } catch (err) {
+        console.error("Auto-deliver error:", err);
+      }
     });
 
     // ── SEND MESSAGE ─────────────────────────────────────────────

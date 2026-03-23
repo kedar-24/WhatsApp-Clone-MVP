@@ -9,6 +9,60 @@ const router = express.Router();
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
 // ─────────────────────────────────────────────────────────────────────
+// GET /api/messages/conversations/all
+// Fetch conversation summaries: latest message & unread count per friend
+// ─────────────────────────────────────────────────────────────────────
+router.get("/conversations/all", authMiddleware, async (req, res) => {
+  try {
+    const currentUserId = new mongoose.Types.ObjectId(req.user.id);
+
+    const conversations = await Message.aggregate([
+      {
+        $match: {
+          $or: [{ senderId: currentUserId }, { receiverId: currentUserId }],
+        },
+      },
+      {
+        $sort: { timestamp: -1 },
+      },
+      {
+        $group: {
+          _id: {
+            $cond: [{ $eq: ["$senderId", currentUserId] }, "$receiverId", "$senderId"],
+          },
+          latestMessage: { $first: "$$ROOT" },
+          unreadCount: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ["$receiverId", currentUserId] },
+                    { $ne: ["$status", "seen"] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      conversations,
+    });
+  } catch (error) {
+    console.error("Conversations error:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error.",
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────
 // GET /api/messages/:userId
 // Fetch chat history between the logged-in user and :userId
 // Sorted by timestamp ascending (oldest → newest)
@@ -78,6 +132,46 @@ router.get("/:userId", authMiddleware, async (req, res) => {
     }
 
     console.error("Fetch messages error:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error.",
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// DELETE /api/messages/:userId
+// Clear chat history between the logged-in user and :userId (for both users)
+// ─────────────────────────────────────────────────────────────────────
+router.delete("/:userId", authMiddleware, async (req, res) => {
+  try {
+    const currentUserId = req.user.id;
+    const otherUserId = req.params.userId;
+
+    if (!isValidObjectId(otherUserId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID format.",
+      });
+    }
+
+    const filter = {
+      $or: [
+        { senderId: currentUserId, receiverId: otherUserId },
+        { senderId: otherUserId, receiverId: currentUserId },
+      ],
+    };
+
+    // Delete all messages matching the filter
+    const result = await Message.deleteMany(filter);
+
+    return res.status(200).json({
+      success: true,
+      message: "Chat history cleared.",
+      deletedCount: result.deletedCount,
+    });
+  } catch (error) {
+    console.error("Clear chat error:", error.message);
     return res.status(500).json({
       success: false,
       message: "Internal server error.",
