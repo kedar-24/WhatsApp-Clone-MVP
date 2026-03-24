@@ -92,6 +92,7 @@ body {
     opacity: 0;
     transform: translateY(8px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -103,6 +104,7 @@ body {
     opacity: 0;
     transform: translateX(-12px);
   }
+
   to {
     opacity: 1;
     transform: translateX(0);
@@ -110,10 +112,12 @@ body {
 }
 
 @keyframes pulse-glow {
+
   0%,
   100% {
     box-shadow: 0 0 8px var(--accent-glow);
   }
+
   50% {
     box-shadow: 0 0 20px var(--accent-glow), 0 0 40px rgba(0, 168, 132, 0.1);
   }
@@ -123,6 +127,7 @@ body {
   0% {
     background-position: -200% 0;
   }
+
   100% {
     background-position: 200% 0;
   }
@@ -161,16 +166,12 @@ body {
   left: -50%;
   width: 200%;
   height: 200%;
-  background: radial-gradient(
-      ellipse at 20% 50%,
+  background: radial-gradient(ellipse at 20% 50%,
       rgba(0, 168, 132, 0.06) 0%,
-      transparent 60%
-    ),
-    radial-gradient(
-      ellipse at 80% 20%,
+      transparent 60%),
+    radial-gradient(ellipse at 80% 20%,
       rgba(0, 168, 132, 0.04) 0%,
-      transparent 50%
-    );
+      transparent 50%);
   pointer-events: none;
 }
 
@@ -967,7 +968,8 @@ body {
 }
 
 .message-tick.seen svg {
-  color: #53bdeb; /* WhatsApp blue tick color */
+  color: #53bdeb;
+  /* WhatsApp blue tick color */
 }
 
 /* ─── Typing Indicator Bubble ─────────────────────────────────── */
@@ -995,12 +997,25 @@ body {
   animation: typingBounce 1.4s infinite ease-in-out both;
 }
 
-.typing-bubble .dot:nth-child(1) { animation-delay: -0.32s; }
-.typing-bubble .dot:nth-child(2) { animation-delay: -0.16s; }
+.typing-bubble .dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.typing-bubble .dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
 
 @keyframes typingBounce {
-  0%, 80%, 100% { transform: scale(0); }
-  40% { transform: scale(1); }
+
+  0%,
+  80%,
+  100% {
+    transform: scale(0);
+  }
+
+  40% {
+    transform: scale(1);
+  }
 }
 
 /* ─── Toast Notification ──────────────────────────────────────── */
@@ -1075,13 +1090,27 @@ body {
 }
 
 @keyframes slideInRight {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 @keyframes fadeOutRight {
-  from { transform: translateX(0); opacity: 1; }
-  to { transform: translateX(100%); opacity: 0; }
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
 }
 
 /* ─── Message Input Bar ──────────────────────────────────────── */
@@ -1445,6 +1474,7 @@ body {
     min-width: 100%;
     display: flex;
   }
+
   .dashboard.mobile-active-sidebar .chat-area {
     display: none;
   }
@@ -1453,6 +1483,7 @@ body {
   .dashboard.mobile-active-chat .sidebar {
     display: none;
   }
+
   .dashboard.mobile-active-chat .chat-area {
     width: 100%;
     display: flex;
@@ -1489,7 +1520,282 @@ body {
 
   .emoji-picker-container {
     width: 100vw;
-    left: -16px; /* Reset the parent padding loosely */
+    left: -16px;
+    /* Reset the parent padding loosely */
     box-sizing: border-box;
+  }
+}
+
+/* ─── File Sharing Styles ─────────────────────────────────────── */
+
+.message-file {
+  margin-top: 4px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.image-container {
+  position: relative;
+  max-width: 100%;
+  max-height: 400px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-image {
+  max-width: 100%;
+  max-height: 400px;
+  object-fit: cover;
+  display: block;
+  cursor: pointer;
+  transition: opacity 0.3s ease;
+}
+
+.upload-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: white;
+  z-index: 10;
+}
+
+.spinner-sm {
+  width: 24px;
+  height: 24px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.file-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  min-width: 200px;
+  max-width: 300px;
+}
+
+.file-card.uploading {
+  opacity: 0.7;
+}
+
+.file-icon {
+  width: 40px;
+  height: 40px;
+  background: var(--accent);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.file-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.file-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-status {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.file-download {
+  color: var(--text-secondary);
+  transition: color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  border-radius: 50%;
+}
+
+.file-download:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.file-download svg {
+  width: 20px;
+  height: 20px;
+}
+
+.message-text.file-caption {
+  margin-top: 4px;
+  padding: 0 4px;
+}
+
+.input-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plus-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.plus-btn:hover:not(:disabled) {
+  color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.plus-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.plus-btn svg {
+  width: 22px;
+  height: 22px;
+}
+
+.input-container {
+  flex: 1;
+  max-width: 100%;
+  /* Decrease the length of chat box on large screens */
+  margin: 0 auto;
+  /* Center it if it doesn't fill the width */
+}
+
+/* ─── Attachment Menu ───────────────────────────────────────── */
+
+.attachment-menu {
+  position: absolute;
+  bottom: calc(100% + 15px);
+  left: 60px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+  min-width: 200px;
+}
+
+.attachment-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.attachment-item:hover {
+  background: var(--bg-hover);
+}
+
+.item-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+
+.item-icon.media {
+  background: #bf59cf;
+  /* Purple for media */
+}
+
+.item-icon.doc {
+  background: #7f66ff;
+  /* Indigo for docs */
+}
+
+.item-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.plus-btn.active {
+  color: var(--accent);
+}
+
+.message-input-bar input {
+  width: 100%;
+  padding: 12px 18px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text-primary);
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+@media (max-width: 768px) {
+  .message-input-bar {
+    padding: 10px 16px;
+    gap: 8px;
+  }
+
+  .input-container {
+    max-width: none;
+    /* Let it fill the width on mobile */
+  }
+
+  .plus-btn svg,
+  .emoji-btn svg {
+    width: 20px;
+    height: 20px;
   }
 }

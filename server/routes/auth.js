@@ -15,15 +15,21 @@ const router = express.Router();
 router.post("/signup", asyncHandler(async (req, res) => {
   const { name, email, password } = req.body;
 
-  if (!name || !email || !password) {
-    return sendError(res, "Name, email, and password are required.", 400);
+  if (!name || typeof name !== 'string' || name.trim().length < 2) {
+    return sendError(res, "Name must be at least 2 characters long.", 400);
   }
 
-  if (password.length < 6) {
+  const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
+  if (!email || typeof email !== 'string' || !emailRegex.test(email.trim())) {
+    return sendError(res, "Please provide a valid email address.", 400);
+  }
+
+  if (!password || typeof password !== 'string' || password.length < 6) {
     return sendError(res, "Password must be at least 6 characters.", 400);
   }
 
-  const existingUser = await User.findOne({ email: email.toLowerCase() });
+  const normalizedEmail = email.trim().toLowerCase();
+  const existingUser = await User.findOne({ email: normalizedEmail });
   if (existingUser) {
     return sendError(res, "A user with this email already exists.", 409);
   }
@@ -33,7 +39,7 @@ router.post("/signup", asyncHandler(async (req, res) => {
 
   const user = await User.create({
     name: name.trim(),
-    email,
+    email: normalizedEmail,
     password: hashedPassword,
   });
 
@@ -52,11 +58,12 @@ router.post("/signup", asyncHandler(async (req, res) => {
 router.post("/login", asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
-  if (!email || !password) {
+  if (!email || typeof email !== 'string' || !password || typeof password !== 'string') {
     return sendError(res, "Email and password are required.", 400);
   }
 
-  const user = await User.findOne({ email: email.toLowerCase() });
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await User.findOne({ email: normalizedEmail });
   if (!user || !user.password) {
     return sendError(res, "Invalid email or password.", 401);
   }

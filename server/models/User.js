@@ -34,6 +34,14 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    isOnline: {
+      type: Boolean,
+      default: false,
+    },
+    lastSeen: {
+      type: Date,
+      default: Date.now,
+    },
     friends: [
       {
         type: mongoose.Schema.Types.ObjectId,

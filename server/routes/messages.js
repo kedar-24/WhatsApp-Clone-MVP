@@ -5,8 +5,32 @@ const authMiddleware = require("../middleware/auth");
 const asyncHandler = require("../middleware/asyncHandler");
 const { isValidObjectId } = require("../utils/validation");
 const { sendSuccess, sendError } = require("../utils/response");
+const { upload } = require("../config/cloudinary");
 
 const router = express.Router();
+
+// ─────────────────────────────────────────────────────────────────────
+// POST /api/messages/upload — Upload file/image to Cloudinary
+// ─────────────────────────────────────────────────────────────────────
+router.post("/upload", authMiddleware, (req, res, next) => {
+  upload.single("file")(req, res, (err) => {
+    if (err) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return sendError(res, "File too large. Max 5MB.", 400);
+      }
+      return sendError(res, err.message, 400);
+    }
+    if (!req.file) return sendError(res, "No file uploaded.", 400);
+
+    const isImage = req.file.mimetype.startsWith("image/");
+
+    return sendSuccess(res, {
+      fileUrl: req.file.path,
+      fileType: isImage ? "image" : "file",
+      fileName: req.file.originalname,
+    });
+  });
+});
 
 // ─────────────────────────────────────────────────────────────────────
 // GET /api/messages/conversations/all

@@ -32,10 +32,12 @@ if (missingEnv.length > 0) {
 const app = express();
 const server = http.createServer(app);
 
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ["http://localhost:3000"];
+
 // ─── Socket.IO Setup ────────────────────────────────────────────────
 const io = new Server(server, {
   cors: {
-    origin: true,
+    origin: ALLOWED_ORIGINS,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true,
   },
@@ -49,24 +51,27 @@ app.use(morgan("dev")); // Log requests
 
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
-  contentSecurityPolicy: false // Allow dynamic scripts for Auth
+  contentSecurityPolicy: process.env.NODE_ENV === "production" ? undefined : false, // Enable CSP in prod
 })); // Secure HTTP headers with cross-origin allowed
 
 app.use(compression()); // Compress responses
 
-// Session config (needed for some passport-oauth plugins even if session:false is used)
 app.use(
   session({
-    secret: process.env.SESSION_SECRET || "fallback_secret_not_for_prod",
+    secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    cookie: { secure: process.env.NODE_ENV === "production" }
+    cookie: { 
+      secure: process.env.NODE_ENV === "production",
+      httpOnly: true,
+      sameSite: 'strict',
+    }
   })
 );
 
 app.use(
   cors({
-    origin: true,
+    origin: ALLOWED_ORIGINS,
     credentials: true,
   })
 );
@@ -74,7 +79,7 @@ app.use(express.json({ limit: "1mb" }));
 app.use(passport.initialize());
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
-// Rate limiter for specific routes
+// Rate limiter for API
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 1000, // limit each IP to 1000 requests per 15 minutes
@@ -83,7 +88,15 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Stricter rate limit for authentication
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 50, // limit each IP to 50 login/signup requests per window
+  message: { success: false, message: "Too many authentication attempts, please try again later." },
+});
+
 app.use("/api", apiLimiter);
+app.use("/api/auth", authLimiter);
 
 // ─── API Routes ─────────────────────────────────────────────────────
 app.use("/api/auth", authRoutes);

@@ -2,6 +2,20 @@
 
 import React from "react";
 import { getInitials, getUserId } from "@/lib/utils";
+import { formatDistanceToNow, isToday, format } from "date-fns";
+
+const formatLastSeen = (dateString) => {
+  if (!dateString) return "Offline";
+  try {
+    const date = new Date(dateString);
+    if (isToday(date)) {
+      return `Last seen today at ${format(date, "h:mm a")}`;
+    }
+    return `Last seen ${formatDistanceToNow(date, { addSuffix: true })}`;
+  } catch (e) {
+    return "Offline";
+  }
+};
 
 export default function ChatHeader({
   selectedFriend,
@@ -12,7 +26,7 @@ export default function ChatHeader({
   showChatMenu,
   setShowChatMenu,
 }) {
-  const online = isUserOnline(getUserId(selectedFriend));
+  const online = isUserOnline(getUserId(selectedFriend)) || selectedFriend.isOnline;
 
   return (
     <div className="chat-header">
@@ -42,7 +56,7 @@ export default function ChatHeader({
       <div className="chat-user-info">
         <div className="chat-user-name">{selectedFriend.name}</div>
         <div className={`chat-user-status ${online ? "online" : ""}`}>
-          {online ? "Online" : "Offline"}
+          {online ? "Online" : formatLastSeen(selectedFriend.lastSeen)}
         </div>
       </div>
 

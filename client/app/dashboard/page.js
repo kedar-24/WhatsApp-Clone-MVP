@@ -21,7 +21,7 @@ import { useChatMessages } from "@/hooks/useChatMessages";
 
 export default function DashboardPage() {
   const { user, logout } = useAuth();
-  const { isConnected, isUserOnline, markSeen } = useSocket();
+  const { isConnected, isUserOnline, markSeen, onEvent, offEvent } = useSocket();
 
   // ── State (Orchestrated by Hooks) ──
   const [selectedFriend, setSelectedFriend] = useState(null);
@@ -34,6 +34,7 @@ export default function DashboardPage() {
   // ── Hooks ──
   const {
     friends,
+    setFriends,
     allUsers,
     friendRequests,
     sentRequests,
@@ -45,6 +46,27 @@ export default function DashboardPage() {
     handleRejectRequest,
     handleRemoveFriend,
   } = useFriendManagement();
+
+  useEffect(() => {
+    const handleStatusChange = ({ userId, isOnline, lastSeen }) => {
+      setFriends((prev) =>
+        prev.map((f) => {
+          if (getUserId(f) === userId) {
+            return { ...f, isOnline, lastSeen };
+          }
+          return f;
+        })
+      );
+      setSelectedFriend((prev) => {
+        if (prev && getUserId(prev) === userId) {
+          return { ...prev, isOnline, lastSeen };
+        }
+        return prev;
+      });
+    };
+    onEvent("user_status_change", handleStatusChange);
+    return () => offEvent("user_status_change", handleStatusChange);
+  }, [onEvent, offEvent, setFriends]);
 
   const {
     messages,
@@ -61,9 +83,11 @@ export default function DashboardPage() {
     fetchMessages,
     fetchConversations,
     handleSendMessage,
+    handleFileUpload,
     handleTyping,
     handleClearChat,
     onEmojiClick,
+    isUploading,
   } = useChatMessages(user, selectedFriend, allUsers, friends);
 
   // ── Helpers ──
@@ -178,6 +202,8 @@ export default function DashboardPage() {
                 setShowEmojiPicker={setShowEmojiPicker}
                 onEmojiClick={onEmojiClick}
                 handleSendMessage={handleSendMessage}
+                handleFileUpload={handleFileUpload}
+                isUploading={isUploading}
                 newMessage={newMessage}
                 handleTyping={handleTyping}
               />

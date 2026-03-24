@@ -33,6 +33,14 @@ const initializeSocket = (io) => {
 
       console.log(`👤 User ${userId} is online (socket ${socket.id})`);
 
+      try {
+        const User = require("../models/User");
+        await User.findByIdAndUpdate(userId, { isOnline: true });
+        io.emit("user_status_change", { userId, isOnline: true });
+      } catch (err) {
+        console.error("Status update error on join:", err);
+      }
+
       // Broadcast updated online-user list to all clients
       io.emit("online_users", Array.from(onlineUsers.keys()));
 
@@ -65,12 +73,19 @@ const initializeSocket = (io) => {
           });
         }
 
-        const { senderId, receiverId, text } = data;
+        const { senderId, receiverId, text, fileUrl, fileType, fileName } = data;
 
         // Validate required fields
-        if (!senderId || !receiverId || !text) {
+        if (!senderId || !receiverId) {
           return socket.emit("error_message", {
-            message: "senderId, receiverId, and text are required.",
+            message: "senderId and receiverId are required.",
+          });
+        }
+
+        // Must have either text OR a file
+        if (!text && !fileUrl) {
+          return socket.emit("error_message", {
+            message: "Message cannot be empty.",
           });
         }
 
@@ -81,14 +96,14 @@ const initializeSocket = (io) => {
           });
         }
 
-        // Validate text length
-        if (typeof text !== "string" || text.trim().length === 0) {
+        // Validate text length if text is present
+        if (text && (typeof text !== "string" || text.trim().length === 0)) {
           return socket.emit("error_message", {
-            message: "Message text cannot be empty.",
+            message: "Invalid text format.",
           });
         }
 
-        if (text.length > 5000) {
+        if (text && text.length > 5000) {
           return socket.emit("error_message", {
             message: "Message cannot exceed 5000 characters.",
           });
@@ -105,7 +120,10 @@ const initializeSocket = (io) => {
         const message = await Message.create({
           senderId,
           receiverId,
-          text: text.trim(),
+          text: text ? text.trim() : "",
+          fileUrl,
+          fileType,
+          fileName,
           timestamp: new Date(),
         });
 
@@ -168,12 +186,21 @@ const initializeSocket = (io) => {
     });
 
     // ── DISCONNECT ───────────────────────────────────────────────
-    socket.on("disconnect", () => {
+    socket.on("disconnect", async () => {
       // Use the userId stored on the socket (O(1) instead of iterating)
       const userId = socket.userId;
       if (userId && onlineUsers.get(userId) === socket.id) {
         onlineUsers.delete(userId);
         console.log(`🔌 User ${userId} went offline`);
+
+        try {
+          const User = require("../models/User");
+          const lastSeen = new Date();
+          await User.findByIdAndUpdate(userId, { isOnline: false, lastSeen });
+          io.emit("user_status_change", { userId, isOnline: false, lastSeen });
+        } catch (err) {
+          console.error("Status update error on disconnect:", err);
+        }
       }
 
       // Broadcast updated online-user list

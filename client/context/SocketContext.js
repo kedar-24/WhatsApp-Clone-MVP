@@ -62,9 +62,9 @@ export function SocketProvider({ children }) {
   }, [user?.id]);
 
   // ── Helper: send a message via socket ──
-  const sendMessage = (senderId, receiverId, text) => {
+  const sendMessage = (senderId, receiverId, text, fileUrl = null, fileType = null, fileName = null) => {
     if (socketRef.current?.connected) {
-      socketRef.current.emit("send_message", { senderId, receiverId, text });
+      socketRef.current.emit("send_message", { senderId, receiverId, text, fileUrl, fileType, fileName });
     }
   };
 

@@ -22,6 +22,7 @@ export function useChatMessages(user, selectedFriend, allUsers, friends) {
   const [typingUsers, setTypingUsers] = useState(new Set());
   const [toasts, setToasts] = useState([]);
   const [newMessage, setNewMessage] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
   const typingTimeoutRef = useRef(null);
   const messagesEndRef = useRef(null);
 
@@ -30,6 +31,50 @@ export function useChatMessages(user, selectedFriend, allUsers, friends) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, 50);
   }, []);
+
+  const handleFileUpload = useCallback(async (file) => {
+    if (!selectedFriend || !user || !file) return;
+
+    const friendId = getUserId(selectedFriend);
+    const tempId = Date.now();
+    const isImage = file.type.startsWith("image/");
+
+    // 1. Optimistic UI: Add temporary "Uploading..." message
+    const tempMsg = {
+      _id: tempId,
+      senderId: user.id,
+      receiverId: friendId,
+      text: isImage ? "Uploading image..." : `Uploading ${file.name}...`,
+      isUploading: true,
+      fileType: isImage ? "image" : "file",
+      fileName: file.name,
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, tempMsg]);
+    scrollToBottom();
+
+    try {
+      setIsUploading(true);
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await messageService.uploadFile(formData);
+      const { fileUrl, fileType, fileName } = res.data;
+
+      // 2. Remove temp message and emit socket event
+      setMessages((prev) => prev.filter((m) => m._id !== tempId));
+      socketSendMessage(user.id, friendId, "", fileUrl, fileType, fileName);
+    } catch (err) {
+      console.error("Upload failed:", err);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m._id === tempId ? { ...m, text: "Upload failed.", isUploading: false, error: true } : m
+        )
+      );
+    } finally {
+      setIsUploading(false);
+    }
+  }, [selectedFriend, user, socketSendMessage, scrollToBottom]);
 
   const fetchConversations = useCallback(async () => {
     try {
@@ -246,8 +291,10 @@ export function useChatMessages(user, selectedFriend, allUsers, friends) {
     fetchConversations,
     fetchMessages,
     handleSendMessage,
+    handleFileUpload,
     handleTyping,
     handleClearChat,
     onEmojiClick,
+    isUploading,
   };
 }

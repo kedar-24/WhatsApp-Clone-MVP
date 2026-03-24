@@ -11,3 +11,7 @@ export const fetchMessages = (userId, page = 1, limit = 50) =>
   api.get(`/messages/${userId}?page=${page}&limit=${limit}`);
 
 export const clearChat = (userId) => api.delete(`/messages/${userId}`);
+
+export const uploadFile = (formData) => api.post("/messages/upload", formData, {
+  headers: { "Content-Type": "multipart/form-data" },
+});

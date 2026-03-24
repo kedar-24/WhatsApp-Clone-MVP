@@ -2,6 +2,20 @@
 
 import React from "react";
 import { getInitials, getUserId, formatTime } from "@/lib/utils";
+import { formatDistanceToNow, isToday, format } from "date-fns";
+
+const formatLastSeen = (dateString) => {
+  if (!dateString) return "Offline";
+  try {
+    const date = new Date(dateString);
+    if (isToday(date)) {
+      return `Last seen today at ${format(date, "h:mm a")}`;
+    }
+    return `Last seen ${formatDistanceToNow(date, { addSuffix: true })}`;
+  } catch (e) {
+    return "Offline";
+  }
+};
 
 export default function Sidebar({
   user,
@@ -159,7 +173,7 @@ export default function Sidebar({
             )
             .map((friend) => {
               const fId = getUserId(friend);
-              const online = isUserOnline(fId);
+              const online = isUserOnline(fId) || friend.isOnline;
               const isSelected =
                 selectedFriend && getUserId(selectedFriend) === fId;
 
@@ -197,7 +211,7 @@ export default function Sidebar({
                       <div
                         className={`latest-message ${unreadCount > 0 ? "unread" : ""}`}
                       >
-                        {msgText || (online ? "Online" : "Offline")}
+                        {msgText || (online ? "Online" : formatLastSeen(friend.lastSeen))}
                       </div>
                       {unreadCount > 0 && (
                         <div className="unread-badge">{unreadCount}</div>
